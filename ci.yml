@@ -1,0 +1,89 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8
+
+      - name: Lint (check code for mistakes)
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude venv
+
+      - name: Train the ML model
+        run: python train_model.py
+
+      - name: Run unit tests
+        run: pytest -v
+
+  docker-publish:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the code
+        uses: actions/checkout@v4
+
+      - name: Build the image and push it to Docker Hub
+        env:
+          RAW_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          RAW_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          # remove any hidden spaces / line breaks that sneaked into the secrets
+          U=$(printf '%s' "$RAW_USER" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+          printf '%s' "$RAW_TOKEN" | tr -d '[:space:]' | docker login -u "$U" --password-stdin
+          docker build -t "$U/smart-lab-monitor:latest" .
+          docker push "$U/smart-lab-monitor:latest"
+
+  deploy-aws:
+    needs: docker-publish
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the code
+        uses: actions/checkout@v4
+
+      - name: Deploy to AWS EC2
+        env:
+          RAW_HOST: ${{ secrets.EC2_HOST }}
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          RAW_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          RAW_AGENT: ${{ secrets.AGENT_KEY }}
+          RAW_GF: ${{ secrets.GRAFANA_PASSWORD }}
+        run: |
+          clean() { printf '%s' "$1" | tr -d '[:space:]'; }
+          HOST=$(clean "$RAW_HOST")
+          DH_USER=$(clean "$RAW_USER" | tr 'A-Z' 'a-z')
+          AGENT_KEY=$(clean "$RAW_AGENT")
+          GF_PASS=$(clean "$RAW_GF")
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/key.pem
+          chmod 600 ~/.ssh/key.pem
+          OPTS="-i $HOME/.ssh/key.pem -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20"
+          ssh $OPTS ubuntu@"$HOST" "mkdir -p ~/smart-lab"
+          scp $OPTS -r docker-compose.prod.yml monitoring ubuntu@"$HOST":~/smart-lab/
+          ssh $OPTS ubuntu@"$HOST" "cd ~/smart-lab && printf 'DOCKERHUB_USERNAME=%s\nAGENT_KEY=%s\nGRAFANA_PASSWORD=%s\n' '$DH_USER' '$AGENT_KEY' '$GF_PASS' > .env && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d && docker image prune -f"
+
+      - name: Check that the live site answers
+        env:
+          RAW_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          HOST=$(printf '%s' "$RAW_HOST" | tr -d '[:space:]')
+          curl -fsS --retry 12 --retry-delay 5 --retry-connrefused "http://$HOST:5000/health"
