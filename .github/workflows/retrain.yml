@@ -1,0 +1,33 @@
+name: Retrain Model
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"      # every Monday 03:00 UTC (automatic retraining trigger)
+  workflow_dispatch:          # or press the "Run workflow" button manually
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Retrain the forecasting model
+        run: python train_model.py
+
+      - name: Quality gate (fail if forecast is not 5% better than a naive guess)
+        run: pytest tests/test_app.py::test_model_quality_gate -v
+
+      - name: Save the new model files (versioned by date)
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrained-model
+          path: |
+            model.pkl
+            model_info.json

@@ -1,0 +1,35 @@
+groups:
+  - name: smart-lab-alerts
+    rules:
+      - alert: MachinePredictedCritical
+        expr: lab_predicted_status == 2
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.machine }} is predicted to become CRITICAL soon"
+          description: "The ML forecast expects CPU or RAM on {{ $labels.machine }} to cross the critical limit."
+
+      - alert: MachinePredictedWarning
+        expr: lab_predicted_status == 1
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.machine }} is predicted to reach WARNING"
+
+      - alert: MachineCriticalNow
+        expr: lab_status == 2
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.machine }} is CRITICAL right now"
+
+      - alert: HighCpuForAMinute
+        expr: lab_cpu_percent > 90
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.machine }} CPU above 90% for 1 minute"
