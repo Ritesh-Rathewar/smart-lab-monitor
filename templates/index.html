@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Smart Lab Monitor</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f4f6f8; text-align:center; }
+    .cards { display:flex; justify-content:center; gap:16px; margin:24px; flex-wrap:wrap; }
+    .card { background:white; padding:20px 30px; border-radius:10px; box-shadow:0 1px 4px #0002; min-width:140px; }
+    .val { font-size:2em; font-weight:bold; }
+    #status { display:inline-block; padding:14px 40px; border-radius:10px; color:white; font-size:1.8em; }
+    .Normal{background:#2e9e4f} .Warning{background:#e6a100} .Critical{background:#d93025}
+  </style>
+</head>
+<body>
+  <h1>Smart Lab Resource Monitor</h1>
+  <div id="status" class="Normal">Loading...</div>
+  <div class="cards">
+    <div class="card">CPU<div class="val" id="cpu">-</div></div>
+    <div class="card">RAM<div class="val" id="ram">-</div></div>
+    <div class="card">Disk<div class="val" id="disk">-</div></div>
+    <div class="card">Network<div class="val" id="net">-</div></div>
+  </div>
+  <script>
+    let alerted = false;
+    async function refresh() {
+      const r = await fetch('/api/live'); const d = await r.json();
+      document.getElementById('cpu').innerText = d.metrics.cpu + '%';
+      document.getElementById('ram').innerText = d.metrics.ram + '%';
+      document.getElementById('disk').innerText = d.metrics.disk + '%';
+      document.getElementById('net').innerText = d.metrics.net_mbps + ' Mbps';
+      const s = document.getElementById('status');
+      s.innerText = d.status; s.className = d.status;
+      if (d.status === 'Critical' && !alerted) { alerted = true; alert('CRITICAL: lab machine overloaded!'); }
+      if (d.status !== 'Critical') alerted = false;
+    }
+    refresh(); setInterval(refresh, 3000);
+  </script>
+</body>
+</html>
