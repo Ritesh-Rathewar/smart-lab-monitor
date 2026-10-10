@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s          # ask the app for fresh numbers every 5 seconds
+  evaluation_interval: 5s      # check the alert rules every 5 seconds
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: smart-lab
+    static_configs:
+      - targets: ["app:5000"]

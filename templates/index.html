@@ -1,40 +1,276 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Smart Lab Monitor</title>
-  <style>
-    body { font-family: Arial, sans-serif; background:#f4f6f8; text-align:center; }
-    .cards { display:flex; justify-content:center; gap:16px; margin:24px; flex-wrap:wrap; }
-    .card { background:white; padding:20px 30px; border-radius:10px; box-shadow:0 1px 4px #0002; min-width:140px; }
-    .val { font-size:2em; font-weight:bold; }
-    #status { display:inline-block; padding:14px 40px; border-radius:10px; color:white; font-size:1.8em; }
-    .Normal{background:#2e9e4f} .Warning{background:#e6a100} .Critical{background:#d93025}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Lab Monitor</title>
+<style>
+  :root { --bg:#f3f5f8; --card:#fff; --text:#1f2933; --muted:#6b7785; --line:#e3e8ee;
+          --ok:#1b9e55; --warn:#e69f00; --crit:#d93025; --learn:#6b7785; --off:#9aa0a6; --brand:#1f3a5f; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Segoe UI,Arial,sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--brand); color:#fff; padding:16px 24px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+  header h1 { margin:0; font-size:1.35rem; }
+  header small { opacity:.8; }
+  .pill { background:#ffffff22; padding:4px 12px; border-radius:20px; font-size:.85rem; margin-left:6px; }
+  main { max-width:1200px; margin:0 auto; padding:18px; }
+  h2 { font-size:1.05rem; margin:22px 0 10px; }
+  #banner .alert { background:#fdecea; border-left:5px solid var(--crit); padding:10px 14px; border-radius:6px; margin-bottom:8px; }
+  #banner .alert.warn { background:#fff6e0; border-color:var(--warn); }
+  .summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; }
+  .stat { background:var(--card); border-radius:10px; padding:12px 16px; border:1px solid var(--line); }
+  .stat b { display:block; font-size:1.8rem; }
+  .stat span { color:var(--muted); font-size:.85rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .machine { cursor:pointer; border-left:6px solid var(--ok); }
+  .machine.warn { border-left-color:var(--warn); } .machine.crit { border-left-color:var(--crit); }
+  .machine.learn { border-left-color:var(--learn); } .machine.off { border-left-color:var(--off); opacity:.65; }
+  .machine.sel { outline:2px solid var(--brand); }
+  .mhead { display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px; }
+  .tag { font-size:.7rem; background:#e8eef6; color:var(--brand); padding:2px 7px; border-radius:10px; margin-left:6px; }
+  .badge { font-size:.75rem; color:#fff; padding:3px 9px; border-radius:12px; white-space:nowrap; }
+  .badge.ok { background:var(--ok); } .badge.warn { background:var(--warn); } .badge.crit { background:var(--crit); }
+  .badge.learn { background:var(--learn); } .badge.off { background:var(--off); }
+  .bar { display:flex; align-items:center; gap:8px; font-size:.8rem; margin:4px 0; }
+  .bar i { width:34px; font-style:normal; color:var(--muted); }
+  .bar .track { flex:1; height:8px; background:#e9edf2; border-radius:4px; overflow:hidden; }
+  .bar .fill { height:100%; background:var(--ok); } .fill.warn { background:var(--warn); } .fill.crit { background:var(--crit); }
+  .bar em { width:40px; text-align:right; font-style:normal; }
+  .pred { margin-top:8px; font-size:.82rem; color:var(--muted); }
+  .pred b { color:var(--text); }
+  .eta { margin-top:6px; font-size:.82rem; font-weight:600; }
+  .eta.crit { color:var(--crit); } .eta.warn { color:var(--warn); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:14px; }
+  .tile b { font-size:1.9rem; display:block; }
+  .tile span { color:var(--muted); font-size:.85rem; }
+  .charts { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; }
+  .charts h3, .two h3 { margin:0 0 6px; font-size:.95rem; }
+  svg text { font-size:11px; fill:#6b7785; }
+  .two { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; margin-top:14px; }
+  table { width:100%; border-collapse:collapse; font-size:.88rem; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; }
+  .reco { margin-top:14px; border-left:5px solid var(--ok); background:#eef8f2; }
+  .reco.warn { border-color:var(--warn); background:#fff8e8; } .reco.crit { border-color:var(--crit); background:#fdecea; }
+  ul#alerts { list-style:none; margin:0; padding:0; }
+  ul#alerts li { padding:8px 4px; border-bottom:1px solid var(--line); font-size:.9rem; }
+  ul#alerts time { color:var(--muted); margin-right:8px; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; background:var(--ok); }
+  .dot.Warning { background:var(--warn); } .dot.Critical { background:var(--crit); }
+  footer { text-align:center; color:var(--muted); font-size:.82rem; padding:20px; }
+  .muted { color:var(--muted); }
+</style>
 </head>
 <body>
-  <h1>Smart Lab Resource Monitor</h1>
-  <div id="status" class="Normal">Loading...</div>
-  <div class="cards">
-    <div class="card">CPU<div class="val" id="cpu">-</div></div>
-    <div class="card">RAM<div class="val" id="ram">-</div></div>
-    <div class="card">Disk<div class="val" id="disk">-</div></div>
-    <div class="card">Network<div class="val" id="net">-</div></div>
-  </div>
-  <script>
-    let alerted = false;
-    async function refresh() {
-      const r = await fetch('/api/live'); const d = await r.json();
-      document.getElementById('cpu').innerText = d.metrics.cpu + '%';
-      document.getElementById('ram').innerText = d.metrics.ram + '%';
-      document.getElementById('disk').innerText = d.metrics.disk + '%';
-      document.getElementById('net').innerText = d.metrics.net_mbps + ' Mbps';
-      const s = document.getElementById('status');
-      s.innerText = d.status; s.className = d.status;
-      if (d.status === 'Critical' && !alerted) { alerted = true; alert('CRITICAL: lab machine overloaded!'); }
-      if (d.status !== 'Critical') alerted = false;
+<header>
+  <div><h1>Smart Lab Resource Monitor</h1><small>Live usage, ML forecast and early warning for every lab PC</small></div>
+  <div><span class="pill" id="clock"></span><span class="pill" id="conn">connecting...</span></div>
+</header>
+<main>
+  <div id="banner"></div>
+  <div class="summary" id="summary"></div>
+
+  <h2>Lab machines <span class="muted" style="font-weight:normal">(click one for details)</span></h2>
+  <div class="grid" id="grid"><div class="muted">Waiting for data...</div></div>
+
+  <section id="detail" hidden>
+    <h2 id="dtitle"></h2>
+    <div class="tiles" id="tiles"></div>
+    <div class="charts">
+      <div class="card"><h3>CPU: past and forecast</h3><div id="chartCpu"></div></div>
+      <div class="card"><h3>RAM: past and forecast</h3><div id="chartRam"></div></div>
+    </div>
+    <div class="two">
+      <div class="card"><h3>Forecast</h3><div id="ftable"></div></div>
+      <div class="card"><h3>Top processes</h3><div id="ptable"></div></div>
+    </div>
+    <div class="card reco" id="reco"></div>
+  </section>
+
+  <h2>Alert log</h2>
+  <div class="card"><ul id="alerts"><li class="muted">No alerts yet.</li></ul></div>
+</main>
+<footer id="model"></footer>
+
+<script>
+const CLS = {Normal:'ok', Warning:'warn', Critical:'crit', Learning:'learn', Offline:'off'};
+let selected = null;
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtSecs(s) {
+  if (s === null || s === undefined) return '-';
+  s = Math.round(s);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60), r = s % 60;
+  return r ? m + 'm ' + r + 's' : m + 'm';
+}
+function lvl(v, warn, crit) { return v > crit ? 'crit' : (v > warn ? 'warn' : ''); }
+function bar(label, v, warn, crit) {
+  return '<div class="bar"><i>' + label + '</i><div class="track"><div class="fill ' + lvl(v, warn, crit) +
+         '" style="width:' + Math.min(100, v) + '%"></div></div><em>' + v.toFixed(0) + '%</em></div>';
+}
+function badge(text, status) { return '<span class="badge ' + CLS[status] + '">' + esc(text) + '</span>'; }
+
+function etaText(m) {
+  if (!m.online || m.status_pred === 'Learning') return '';
+  if (m.eta_critical_s !== null && m.eta_critical_s !== undefined) {
+    return '<div class="eta crit">Critical ' + (m.eta_critical_s === 0 ? 'now' : 'in ~' + fmtSecs(m.eta_critical_s)) +
+           ' (' + esc((m.eta_critical_res || '').toUpperCase()) + ')</div>';
+  }
+  if (m.eta_warning_s !== null && m.eta_warning_s !== undefined) {
+    return '<div class="eta warn">Warning ' + (m.eta_warning_s === 0 ? 'now' : 'in ~' + fmtSecs(m.eta_warning_s)) +
+           ' (' + esc((m.eta_warning_res || '').toUpperCase()) + ')</div>';
+  }
+  return '';
+}
+
+function renderSummary(s) {
+  document.getElementById('summary').innerHTML =
+    '<div class="stat"><b>' + s.online + '/' + s.total + '</b><span>machines online</span></div>' +
+    '<div class="stat"><b style="color:var(--ok)">' + s.normal + '</b><span>healthy</span></div>' +
+    '<div class="stat"><b style="color:var(--warn)">' + s.warning + '</b><span>warning (now or soon)</span></div>' +
+    '<div class="stat"><b style="color:var(--crit)">' + s.critical + '</b><span>critical (now or soon)</span></div>';
+}
+
+function renderBanner(machines) {
+  const rows = machines.filter(m => m.online && (m.status_pred === 'Critical' || m.status_now === 'Critical'));
+  document.getElementById('banner').innerHTML = rows.map(m => {
+    const when = m.status_now === 'Critical' ? 'is Critical right now' :
+      'is predicted to be Critical in ~' + fmtSecs(m.eta_critical_s);
+    return '<div class="alert"><b>' + esc(m.name) + '</b> ' + when + '. ' + esc(m.recommendation) + '</div>';
+  }).join('');
+}
+
+function renderGrid(machines) {
+  const grid = document.getElementById('grid');
+  if (!machines.length) { grid.innerHTML = '<div class="muted">No machines yet. Start an agent or simulate_lab.py.</div>'; return; }
+  grid.innerHTML = machines.map(m => {
+    const st = m.online ? m.status_pred === 'Learning' ? 'Learning' : m.status_pred : 'Offline';
+    const mid = m.forecast ? m.forecast[Math.floor(m.forecast.length / 2)] : null;
+    const cls = CLS[m.online ? (m.status_now === 'Critical' ? 'Critical' : st) : 'Offline'];
+    return '<div class="card machine ' + cls + (m.name === selected ? ' sel' : '') + '" data-name="' + esc(m.name) + '">' +
+      '<div class="mhead"><div><b>' + esc(m.name) + '</b>' + (m.is_local ? '<span class="tag">this server</span>' : '') + '</div>' +
+      badge(m.online ? 'Now: ' + m.status_now : 'Offline', m.online ? m.status_now : 'Offline') + '</div>' +
+      bar('CPU', m.now.cpu, 70, 90) + bar('RAM', m.now.ram, 75, 90) + bar('Disk', m.now.disk, 85, 95) +
+      '<div class="pred">' + (mid && m.online
+        ? 'Forecast in ~' + fmtSecs(mid.seconds) + ': CPU <b>' + m.now.cpu.toFixed(0) + ' &rarr; ' + mid.cpu.toFixed(0) +
+          '%</b> &middot; RAM <b>' + m.now.ram.toFixed(0) + ' &rarr; ' + mid.ram.toFixed(0) + '%</b>'
+        : (m.online ? 'Collecting data (' + m.readings + ' readings)...' : 'No data for ' + fmtSecs(m.seconds_since))) + '</div>' +
+      etaText(m) + '</div>';
+  }).join('');
+  grid.querySelectorAll('.machine').forEach(el => el.onclick = () => { selected = el.dataset.name; refresh(); });
+}
+
+function renderAlerts(list) {
+  const ul = document.getElementById('alerts');
+  ul.innerHTML = list.length ? list.map(a =>
+    '<li><time>' + esc(a.time) + '</time><span class="dot ' + esc(a.level) + '"></span>' + esc(a.message) + '</li>').join('')
+    : '<li class="muted">No alerts yet.</li>';
+}
+
+function chart(values, forecastPts, warn, crit) {
+  const W = 640, H = 220, L = 34, R = 14, T = 12, B = 26;
+  const n = values.length, maxH = forecastPts.length ? forecastPts[forecastPts.length - 1].h : 0;
+  const x0 = -(n - 1), x1 = Math.max(maxH, 1);
+  const X = i => L + (i - x0) / (x1 - x0) * (W - L - R);
+  const Y = v => T + (100 - Math.max(0, Math.min(100, v))) / 100 * (H - T - B);
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img">';
+  [0, 25, 50, 75, 100].forEach(v => {
+    s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="#e3e8ee"/>' +
+         '<text x="' + (L - 5) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + v + '</text>';
+  });
+  s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(warn) + '" y2="' + Y(warn) + '" stroke="#e69f00" stroke-dasharray="4 4"/>' +
+       '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(crit) + '" y2="' + Y(crit) + '" stroke="#d93025" stroke-dasharray="4 4"/>' +
+       '<text x="' + (W - R) + '" y="' + (Y(warn) - 3) + '" text-anchor="end">warning ' + warn + '%</text>' +
+       '<text x="' + (W - R) + '" y="' + (Y(crit) - 3) + '" text-anchor="end">critical ' + crit + '%</text>';
+  s += '<line x1="' + X(0) + '" x2="' + X(0) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="#9aa5b1"/>' +
+       '<text x="' + X(0) + '" y="' + (H - 8) + '" text-anchor="middle">now</text>';
+  if (n > 1) {
+    s += '<polyline fill="none" stroke="#1f3a5f" stroke-width="2.2" points="' +
+         values.map((v, i) => X(i - (n - 1)).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ') + '"/>';
+  }
+  if (forecastPts.length) {
+    const pts = [{h: 0, v: values[n - 1]}].concat(forecastPts);
+    s += '<polyline fill="none" stroke="#e67e22" stroke-width="2.2" stroke-dasharray="6 4" points="' +
+         pts.map(p => X(p.h).toFixed(1) + ',' + Y(p.v).toFixed(1)).join(' ') + '"/>';
+    forecastPts.forEach(p => {
+      s += '<circle cx="' + X(p.h).toFixed(1) + '" cy="' + Y(p.v).toFixed(1) + '" r="4" fill="#e67e22"/>' +
+           '<text x="' + X(p.h).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">+' + esc(p.label) + '</text>';
+    });
+  }
+  s += '<circle cx="' + X(0) + '" cy="' + Y(values[n - 1]) + '" r="4" fill="#1f3a5f"/></svg>';
+  return s;
+}
+
+function renderDetail(m) {
+  document.getElementById('detail').hidden = false;
+  document.getElementById('dtitle').innerHTML = 'Details: ' + esc(m.name) + ' ' + badge('Now: ' + m.status_now, m.status_now) +
+    ' ' + (m.status_pred !== 'Learning' ? badge('Next: ' + m.status_pred, m.status_pred) : badge('Learning', 'Learning'));
+  const t = (label, v, unit) => '<div class="card tile"><span>' + label + '</span><b>' + v + unit + '</b></div>';
+  document.getElementById('tiles').innerHTML =
+    t('CPU usage', m.now.cpu.toFixed(0), '%') + t('RAM usage', m.now.ram.toFixed(0), '%') +
+    t('Disk usage', m.now.disk.toFixed(0), '%') + t('Network', m.now.net_mbps.toFixed(1), ' Mbps');
+
+  const hist = m.history || [];
+  const cpuH = hist.map(h => h.cpu), ramH = hist.map(h => h.ram);
+  const fc = m.forecast || [];
+  const fp = key => fc.map(f => ({h: f.horizon, v: f[key], label: fmtSecs(f.seconds)}));
+  if (cpuH.length) {
+    document.getElementById('chartCpu').innerHTML = chart(cpuH, fp('cpu'), 70, 90);
+    document.getElementById('chartRam').innerHTML = chart(ramH, fp('ram'), 75, 90);
+  }
+
+  document.getElementById('ftable').innerHTML = fc.length
+    ? '<table><tr><th>When</th><th>CPU</th><th>RAM</th><th>Status</th></tr>' +
+      '<tr><td>Now</td><td>' + m.now.cpu.toFixed(0) + '%</td><td>' + m.now.ram.toFixed(0) + '%</td><td>' + badge(m.status_now, m.status_now) + '</td></tr>' +
+      fc.map(f => '<tr><td>in ~' + fmtSecs(f.seconds) + '</td><td>' + f.cpu.toFixed(0) + '%</td><td>' + f.ram.toFixed(0) + '%</td><td>' + badge(f.status, f.status) + '</td></tr>').join('') +
+      '</table>'
+    : '<span class="muted">Collecting data... (' + m.readings + ' readings)</span>';
+
+  const procs = (m.procs || []);
+  document.getElementById('ptable').innerHTML = procs.length
+    ? '<table><tr><th>Process</th><th>CPU</th><th>RAM</th></tr>' +
+      procs.map(p => '<tr><td>' + esc(p.name) + '</td><td>' + p.cpu.toFixed(1) + '%</td><td>' + p.mem.toFixed(1) + '%</td></tr>').join('') + '</table>'
+    : '<span class="muted">No process data from this machine.</span>';
+
+  const worst = m.status_pred === 'Critical' || m.status_now === 'Critical' ? 'crit' :
+                (m.status_pred === 'Warning' || m.status_now === 'Warning' ? 'warn' : '');
+  const reco = document.getElementById('reco');
+  reco.className = 'card reco ' + worst;
+  reco.innerHTML = '<b>Recommendation</b><br>' + esc(m.recommendation);
+}
+
+async function refresh() {
+  try {
+    const lab = await (await fetch('/api/lab')).json();
+    document.getElementById('conn').textContent = 'live';
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+    renderSummary(lab.summary);
+    renderBanner(lab.machines);
+    if (!selected || !lab.machines.some(m => m.name === selected)) {
+      const first = lab.machines.find(m => m.is_local) || lab.machines[0];
+      selected = first ? first.name : null;
     }
-    refresh(); setInterval(refresh, 3000);
-  </script>
+    renderGrid(lab.machines);
+    renderAlerts(lab.alerts);
+    const mi = lab.model || {};
+    document.getElementById('model').textContent = mi.version
+      ? 'ML model ' + mi.version + ' | trained ' + mi.trained_at + ' | forecast error: CPU \u00b1' + mi.mae_cpu +
+        '%, RAM \u00b1' + mi.mae_ram + '% | ' + mi.improvement_pct + '% better than "no change" guess'
+      : '';
+    if (selected) {
+      const d = await (await fetch('/api/machine/' + encodeURIComponent(selected))).json();
+      if (!d.error) renderDetail(d);
+    }
+  } catch (e) {
+    document.getElementById('conn').textContent = 'disconnected';
+  }
+}
+refresh();
+setInterval(refresh, 3000);
+</script>
 </body>
 </html>
