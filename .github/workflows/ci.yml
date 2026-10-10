@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Download the code
         uses: actions/checkout@v4
@@ -26,10 +25,60 @@ jobs:
           pip install flake8
 
       - name: Lint (check code for mistakes)
-        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude venv
 
       - name: Train the ML model
         run: python train_model.py
 
       - name: Run unit tests
         run: pytest -v
+
+  docker-publish:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/smart-lab-monitor:latest
+
+  deploy-aws:
+    needs: docker-publish
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the code
+        uses: actions/checkout@v4
+
+      - name: Deploy to AWS EC2
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          AGENT_KEY: ${{ secrets.AGENT_KEY }}
+          GF_PASS: ${{ secrets.GRAFANA_PASSWORD }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/key.pem
+          chmod 600 ~/.ssh/key.pem
+          OPTS="-i $HOME/.ssh/key.pem -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20"
+          ssh $OPTS ubuntu@"$HOST" "mkdir -p ~/smart-lab"
+          scp $OPTS -r docker-compose.prod.yml monitoring ubuntu@"$HOST":~/smart-lab/
+          ssh $OPTS ubuntu@"$HOST" "cd ~/smart-lab && printf 'DOCKERHUB_USERNAME=%s\nAGENT_KEY=%s\nGRAFANA_PASSWORD=%s\n' '$DH_USER' '$AGENT_KEY' '$GF_PASS' > .env && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d && docker image prune -f"
+
+      - name: Check that the live site answers
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+        run: curl -fsS --retry 12 --retry-delay 5 --retry-connrefused "http://$HOST:5000/health"
